@@ -196,7 +196,8 @@ class YoutubeDownloaderApp(ctk.CTk):
                 "Le playlist non sono supportate. Incolla il link di un singolo video."
             ))
         except Exception as e:
-            self.after(0, lambda: self._on_analyze_error(str(e)))
+            message = str(e)
+            self.after(0, lambda msg=message: self._on_analyze_error(msg))
 
     def _on_analyze_ok(self, analyzed_url: str, rows: list[FormatRow]):
         try:
