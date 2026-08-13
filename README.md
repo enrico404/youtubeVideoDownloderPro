@@ -24,9 +24,11 @@ Per convertire i file in MP3 e scaricare video in alta qualità, il programma ha
    python main.py
    ```
 2. Incolla il link di YouTube nel campo di testo.
-3. Scegli se vuoi il file in **Video (MP4)** o **Audio (MP3)**.
-4. Clicca su **Scarica Ora**.
-5. Il file verrà salvato nella tua cartella **Download** (o in quella che sceglierai).
+3. Scegli **Video (MP4)** o **Audio (MP3)**.
+4. Se hai scelto MP4, clicca **Analizza video**, poi scegli qualità dal menu (`1080p • 30fps • ~45 MB`).
+5. (Opzionale) Scegli la cartella di destinazione.
+6. Clicca **Scarica Ora**. Il progresso si vede sulla barra nella finestra.
+7. Il file verrà salvato nella cartella **Download** (o in quella che hai scelto).
 
 ---
 *Nota: Se un video non si scarica, prova ad aggiornare il motore di download con: `pip install -U yt-dlp`*

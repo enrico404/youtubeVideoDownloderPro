@@ -235,79 +235,114 @@ class YoutubeDownloaderApp(ctk.CTk):
             self.label_path.configure(text=f"Destinazione: {self.download_path}")
 
     def progress_hook(self, d):
-        if d['status'] == 'downloading':
-            p = d.get('_percent_str', '0%').replace('%', '')
-            try:
-                progress = float(p) / 100
-                self.progress_bar.set(progress)
-                self.progress_label.configure(text=f"{p.strip()}%")
-                self.status_label.configure(text=f"Scaricando: {d.get('filename', '...')[:50]}...")
-            except:
-                pass
-        elif d['status'] == 'finished':
+        info = d.get("info_dict") or {}
+        payload = {
+            "status": d.get("status"),
+            "downloaded_bytes": d.get("downloaded_bytes"),
+            "total_bytes": d.get("total_bytes"),
+            "total_bytes_estimate": d.get("total_bytes_estimate"),
+            "info_dict": {"vcodec": info.get("vcodec")},
+        }
+        self.after(0, lambda p=payload: self._apply_progress(p))
+
+    def _apply_progress(self, d: dict):
+        fraction = progress_fraction(d)
+        if fraction is not None:
+            self.progress_bar.set(fraction)
+            self.progress_label.configure(text=f"{int(round(fraction * 100))}%")
+        if d.get("status") == "downloading":
+            self._ui_status(downloading_status_text(d.get("info_dict")), "gray")
+        elif d.get("status") == "finished":
             self.progress_bar.set(1)
             self.progress_label.configure(text="100%")
-            self.status_label.configure(text="Conversione in corso...")
+            self._ui_status(finished_status_text(self.format_var.get()), "gray")
 
     def start_download_thread(self):
-        url = self.url_var.get()
+        url = self.url_var.get().strip()
         if not url:
             messagebox.showerror("Errore", "Per favore inserisci un link valido.")
             return
-        
-        self.download_button.configure(state="disabled")
+        if self.format_var.get() == "mp4" and self._selected_format_row() is None:
+            messagebox.showerror(
+                "Errore",
+                "Analizza il video e scegli un formato prima di scaricare.",
+            )
+            return
+        self._set_busy(True)
+        self.progress_bar.set(0)
+        self.progress_label.configure(text="0%")
         threading.Thread(target=self.download, daemon=True).start()
 
     def download(self):
-        url = self.url_var.get()
+        url = self.url_var.get().strip()
         fmt = self.format_var.get()
         ffmpeg_path = get_ffmpeg_path()
 
         if ffmpeg_path is None:
-            self.status_label.configure(text="Errore: ffmpeg.exe mancante", text_color="#e74c3c")
-            messagebox.showerror("Errore FFmpeg", "Non trovo ffmpeg.exe nella cartella del programma.\n\nAssicurati di aver scaricato e copiato ffmpeg.exe e ffprobe.exe nella stessa cartella di questo script.")
-            self.download_button.configure(state="normal")
+            def _no_ffmpeg():
+                self._ui_status("Errore: ffmpeg.exe mancante", "#e74c3c")
+                messagebox.showerror(
+                    "Errore FFmpeg",
+                    "Non trovo ffmpeg.exe nella cartella del programma.\n\n"
+                    "Assicurati di aver scaricato e copiato ffmpeg.exe e ffprobe.exe "
+                    "nella stessa cartella di questo script.",
+                )
+                self._set_busy(False)
+            self.after(0, _no_ffmpeg)
             return
 
         ydl_opts = {
-            'progress_hooks': [self.progress_hook],
-            'outtmpl': os.path.join(self.download_path, '%(title)s.%(ext)s'),
-            'ffmpeg_location': ffmpeg_path,
-            'quiet': True,
-            'no_warnings': True,
-            # Compatibilità per video musicali
-            'extractor_args': {'youtube': {'player_client': ['ios', 'android', 'web']}},
+            "progress_hooks": [self.progress_hook],
+            "outtmpl": os.path.join(self.download_path, "%(title)s.%(ext)s"),
+            "ffmpeg_location": ffmpeg_path,
+            "quiet": True,
+            "no_warnings": True,
+            "noprogress": True,
+            "extractor_args": EXTRACTOR_ARGS,
         }
 
-        if fmt == 'mp3':
+        if fmt == "mp3":
             ydl_opts.update({
-                'format': 'bestaudio/best',
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
+                "format": "bestaudio/best",
+                "postprocessors": [{
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
                 }],
             })
         else:
-            # Formato video più flessibile per evitare "format not available"
-            ydl_opts.update({
-                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-            })
+            row = self._selected_format_row()
+            if row is None:
+                def _no_row():
+                    messagebox.showerror(
+                        "Errore",
+                        "Analizza il video e scegli un formato prima di scaricare.",
+                    )
+                    self._set_busy(False)
+                self.after(0, _no_row)
+                return
+            ydl_opts["format"] = ydl_format_selector(row)
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
-            self.status_label.configure(text="Download completato!", text_color="#2ecc71")
-            messagebox.showinfo("Successo", "Download completato con successo!")
+            def _ok():
+                self._ui_status("Download completato!", "#2ecc71")
+                messagebox.showinfo("Successo", "Download completato con successo!")
+            self.after(0, _ok)
         except Exception as e:
             error_msg = str(e)
             print(f"Debug Errore yt-dlp: {error_msg}")
-            self.status_label.configure(text="Errore durante il download", text_color="#e74c3c")
-            messagebox.showerror("Errore di Download", f"Dettagli errore:\n{error_msg}")
+            def _err(msg=error_msg):
+                self._ui_status("Errore durante il download", "#e74c3c")
+                messagebox.showerror("Errore di Download", f"Dettagli errore:\n{msg}")
+            self.after(0, _err)
         finally:
-            self.download_button.configure(state="normal")
-            self.progress_bar.set(0)
-            self.progress_label.configure(text="0%")
+            def _done():
+                self.progress_bar.set(0)
+                self.progress_label.configure(text="0%")
+                self._set_busy(False)
+            self.after(0, _done)
 
 if __name__ == "__main__":
     app = YoutubeDownloaderApp()
