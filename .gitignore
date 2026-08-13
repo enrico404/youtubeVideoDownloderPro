@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.superpowers/
+ffmpeg.exe
+ffplay.exe
+ffprobe.exe
+*.mp4
+*.mp3
+*.webm
+.venv/
+venv/
