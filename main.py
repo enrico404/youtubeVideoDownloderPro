@@ -148,6 +148,7 @@ class YoutubeDownloaderApp(ctk.CTk):
     def _sync_controls(self):
         url = self.url_var.get()
         mode = self.format_var.get()
+        self.entry_url.configure(state="disabled" if self._busy else "normal")
         analyze_state = "normal" if should_enable_analyze(mode, url, self._busy) else "disabled"
         self.analyze_button.configure(state=analyze_state)
         download_state = "disabled" if self._busy else "normal"
@@ -185,6 +186,7 @@ class YoutubeDownloaderApp(ctk.CTk):
                 "quiet": True,
                 "no_warnings": True,
                 "noprogress": True,
+                "noplaylist": True,
                 "extractor_args": EXTRACTOR_ARGS,
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -262,7 +264,9 @@ class YoutubeDownloaderApp(ctk.CTk):
         if not url:
             messagebox.showerror("Errore", "Per favore inserisci un link valido.")
             return
-        if self.format_var.get() == "mp4" and self._selected_format_row() is None:
+        fmt = self.format_var.get()
+        row = self._selected_format_row()
+        if fmt == "mp4" and row is None:
             messagebox.showerror(
                 "Errore",
                 "Analizza il video e scegli un formato prima di scaricare.",
@@ -271,11 +275,9 @@ class YoutubeDownloaderApp(ctk.CTk):
         self._set_busy(True)
         self.progress_bar.set(0)
         self.progress_label.configure(text="0%")
-        threading.Thread(target=self.download, daemon=True).start()
+        threading.Thread(target=self.download, args=(url, fmt, row), daemon=True).start()
 
-    def download(self):
-        url = self.url_var.get().strip()
-        fmt = self.format_var.get()
+    def download(self, url: str, fmt: str, row: FormatRow | None):
         ffmpeg_path = get_ffmpeg_path()
 
         if ffmpeg_path is None:
@@ -298,6 +300,7 @@ class YoutubeDownloaderApp(ctk.CTk):
             "quiet": True,
             "no_warnings": True,
             "noprogress": True,
+            "noplaylist": True,
             "extractor_args": EXTRACTOR_ARGS,
         }
 
@@ -311,17 +314,8 @@ class YoutubeDownloaderApp(ctk.CTk):
                 }],
             })
         else:
-            row = self._selected_format_row()
-            if row is None:
-                def _no_row():
-                    messagebox.showerror(
-                        "Errore",
-                        "Analizza il video e scegli un formato prima di scaricare.",
-                    )
-                    self._set_busy(False)
-                self.after(0, _no_row)
-                return
             ydl_opts["format"] = ydl_format_selector(row)
+            ydl_opts["merge_output_format"] = "mp4"
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
