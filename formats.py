@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-EXTRACTOR_ARGS = {"youtube": {"player_client": ["ios", "android", "web"]}}
+# Do not pin ios/android/web: those clients often return only progressive 360p
+# (YouTube SABR). Empty args let yt-dlp pick clients that still expose DASH.
+EXTRACTOR_ARGS = {}
 
 
 class PlaylistNotSupportedError(ValueError):

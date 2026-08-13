@@ -1,6 +1,7 @@
 import pytest
 
 from formats import (
+    EXTRACTOR_ARGS,
     FormatRow,
     PlaylistNotSupportedError,
     build_format_rows,
@@ -85,3 +86,9 @@ def test_label_without_size():
 def test_label_fractional_fps():
     label = format_row_label(FormatRow("1", 1080, 23.976, None))
     assert "23.9fps" in label
+
+
+def test_extractor_args_do_not_force_legacy_player_clients():
+    """ios+android+web often return only progressive 360p (YouTube SABR)."""
+    youtube = EXTRACTOR_ARGS.get("youtube") or {}
+    assert youtube.get("player_client") != ["ios", "android", "web"]
