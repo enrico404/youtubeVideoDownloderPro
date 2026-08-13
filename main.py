@@ -5,6 +5,19 @@ import customtkinter as ctk
 from tkinter import messagebox, filedialog
 import yt_dlp
 
+from formats import (
+    EXTRACTOR_ARGS,
+    FormatRow,
+    PlaylistNotSupportedError,
+    build_format_rows,
+    downloading_status_text,
+    finished_status_text,
+    format_row_label,
+    progress_fraction,
+    should_enable_analyze,
+    ydl_format_selector,
+)
+
 # Impostazioni tema
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
@@ -29,18 +42,25 @@ def get_ffmpeg_path():
     return None
 
 class YoutubeDownloaderApp(ctk.CTk):
+    COMBO_PLACEHOLDER = "Analizza il video per vedere i formati"
+
     def __init__(self):
         super().__init__()
 
         self.title("YouTube Downloader Pro")
-        self.geometry("600x450")
 
         # Variabili
         self.url_var = ctk.StringVar()
         self.format_var = ctk.StringVar(value="mp4")
         self.download_path = os.path.join(os.path.expanduser("~"), "Downloads")
+        self.format_rows: list[FormatRow] = []
+        self._busy = False
+        self.geometry("600x520")
 
         self.create_widgets()
+        self.url_var.trace_add("write", lambda *_: self._on_url_changed())
+        self.format_var.trace_add("write", lambda *_: self._on_mode_changed())
+        self._sync_controls()
 
     def create_widgets(self):
         # Titolo
@@ -64,6 +84,28 @@ class YoutubeDownloaderApp(ctk.CTk):
                                            variable=self.format_var, value="mp3")
         self.radio_mp3.grid(row=0, column=1, padx=20, pady=10)
 
+        self.analyze_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.analyze_frame.pack(pady=10)
+
+        self.analyze_button = ctk.CTkButton(
+            self.analyze_frame,
+            text="Analizza video",
+            command=self.start_analyze_thread,
+            width=160,
+        )
+        self.analyze_button.grid(row=0, column=0, padx=8)
+
+        self.format_combo = ctk.CTkComboBox(
+            self.analyze_frame,
+            values=["Analizza il video per vedere i formati"],
+            width=320,
+            state="disabled",
+        )
+        self.format_combo.configure(state="normal")
+        self.format_combo.set("Analizza il video per vedere i formati")
+        self.format_combo.configure(state="disabled")
+        self.format_combo.grid(row=0, column=1, padx=8)
+
         # Percorso di salvataggio
         self.path_button = ctk.CTkButton(self, text="Scegli cartella di destinazione", command=self.browse_path)
         self.path_button.pack(pady=5)
@@ -86,6 +128,48 @@ class YoutubeDownloaderApp(ctk.CTk):
         # Status
         self.status_label = ctk.CTkLabel(self, text="Pronto", text_color="gray")
         self.status_label.pack(pady=10)
+
+    def _on_url_changed(self):
+        if self.format_rows:
+            self._clear_format_rows()
+        self._sync_controls()
+
+    def _on_mode_changed(self):
+        if self.format_var.get() == "mp3":
+            self._clear_format_rows()
+        self._sync_controls()
+
+    def _clear_format_rows(self):
+        self.format_rows = []
+        self.format_combo.configure(values=[self.COMBO_PLACEHOLDER], state="normal")
+        self.format_combo.set(self.COMBO_PLACEHOLDER)
+        self.format_combo.configure(state="disabled")
+
+    def _sync_controls(self):
+        url = self.url_var.get()
+        mode = self.format_var.get()
+        analyze_state = "normal" if should_enable_analyze(mode, url, self._busy) else "disabled"
+        self.analyze_button.configure(state=analyze_state)
+        download_state = "disabled" if self._busy else "normal"
+        self.download_button.configure(state=download_state)
+        if self._busy or mode == "mp3" or not self.format_rows:
+            self.format_combo.configure(state="disabled")
+        else:
+            self.format_combo.configure(state="readonly")
+
+    def _selected_format_row(self) -> FormatRow | None:
+        label = self.format_combo.get()
+        for row in self.format_rows:
+            if format_row_label(row) == label:
+                return row
+        return None
+
+    def _set_busy(self, busy: bool):
+        self._busy = busy
+        self._sync_controls()
+
+    def start_analyze_thread(self):
+        messagebox.showinfo("Analizza", "Analisi non ancora collegata.")
 
     def browse_path(self):
         path = filedialog.askdirectory()
