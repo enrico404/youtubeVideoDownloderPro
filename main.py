@@ -169,7 +169,63 @@ class YoutubeDownloaderApp(ctk.CTk):
         self._sync_controls()
 
     def start_analyze_thread(self):
-        messagebox.showinfo("Analizza", "Analisi non ancora collegata.")
+        url = self.url_var.get().strip()
+        if not url:
+            messagebox.showerror("Errore", "Per favore inserisci un link valido.")
+            return
+        if self.format_var.get() != "mp4":
+            return
+        self._set_busy(True)
+        self._ui_status("Analisi in corso…", "gray")
+        threading.Thread(target=self.analyze, args=(url,), daemon=True).start()
+
+    def analyze(self, url: str):
+        try:
+            ydl_opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "noprogress": True,
+                "extractor_args": EXTRACTOR_ARGS,
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+            rows = build_format_rows(info)
+            self.after(0, lambda: self._on_analyze_ok(url, rows))
+        except PlaylistNotSupportedError:
+            self.after(0, lambda: self._on_analyze_error(
+                "Le playlist non sono supportate. Incolla il link di un singolo video."
+            ))
+        except Exception as e:
+            self.after(0, lambda: self._on_analyze_error(str(e)))
+
+    def _on_analyze_ok(self, analyzed_url: str, rows: list[FormatRow]):
+        try:
+            if self.url_var.get().strip() != analyzed_url:
+                return
+            if not rows:
+                self._clear_format_rows()
+                self._ui_status("Nessun formato video disponibile", "#e74c3c")
+                messagebox.showerror(
+                    "Errore",
+                    "Nessun formato video disponibile per questo link.",
+                )
+                return
+            self.format_rows = rows
+            labels = [format_row_label(row) for row in rows]
+            self.format_combo.configure(values=labels, state="readonly")
+            self.format_combo.set(labels[0])
+            self._ui_status("Scegli la qualità e premi Scarica Ora", "gray")
+        finally:
+            self._set_busy(False)
+
+    def _on_analyze_error(self, message: str):
+        self._clear_format_rows()
+        self._ui_status("Errore durante l'analisi", "#e74c3c")
+        messagebox.showerror("Errore di analisi", f"Dettagli errore:\n{message}")
+        self._set_busy(False)
+
+    def _ui_status(self, text: str, color: str):
+        self.status_label.configure(text=text, text_color=color)
 
     def browse_path(self):
         path = filedialog.askdirectory()
